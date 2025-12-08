@@ -39,6 +39,8 @@ protocol GameControllerAdapterProtocol: AnyObject {
     func buttonBValueChanged(_ button: GCControllerButtonInput, _ value: Float, _ pressed: Bool) -> Void
     func buttonXValueChanged(_ button: GCControllerButtonInput, _ value: Float, _ pressed: Bool) -> Void
     func buttonYValueChanged(_ button: GCControllerButtonInput, _ value: Float, _ pressed: Bool) -> Void
+
+    func debugLog(_ message: String)
 }
 
 extension GameControllerAdapterProtocol {

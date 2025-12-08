@@ -10,9 +10,47 @@
 //
 
 import UIKit
+import GroupActivities
 import GameController
 
 class ViewController: UIViewController {
+
+    var faceTimeMonitor: FaceTimeMonitor?
+    var groupActivitieHandler: GroupActivityHandler<GameControllerActivity, GameControllerMessage>?
+
+    lazy var faceTimeLabel = buildLabel(text: "Group Activities:", textAlignment: .right)
+    lazy var faceTimeStatus: UILabel = buildLabel(textAlignment: .left)
+    lazy var faceTimeStack = buildStack(arrangedSubViews: [faceTimeLabel, faceTimeStatus])
+
+    lazy var sharePlayStack = buildStack(arrangedSubViews: [faceTimeStack, sessionStartButton], axis: .vertical)
+
+    lazy var actionSharePlayImage = UIImage(systemName: "shareplay")
+
+    lazy var sessionStartAction = UIAction(title: "Start Session", image: actionSharePlayImage) { [weak self] action in
+
+        self?.startSession()
+    }
+
+    func startSession() {
+
+        DispatchQueue.main.async {
+            guard
+                let viewController = try? GroupActivitySharingController(GameControllerActivity())
+            else { return }
+
+            self.navigationController?.topViewController?.present(viewController, animated: true) {}
+        }
+    }
+
+    lazy var sessionStartButton: UIButton = {
+        let button = UIButton(primaryAction: sessionStartAction)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.titleLabel?.font = .preferredFont(forTextStyle: .title1)
+        NSLayoutConstraint.activate([
+            button.heightAnchor.constraint(equalToConstant: .minTouchTarget),
+        ])
+        return button
+    }()
 
     var connectedController: GCController?
 
@@ -30,14 +68,19 @@ class ViewController: UIViewController {
         GCInputButtonX
     ]
 
-    lazy var connectAction = UIAction(title: "Connect Game Controller") { _ in
+    lazy var connectAction = UIAction(title: "Connect Game Controller") { [weak self] _ in
+        guard let self else { return }
+
+        connectGameController()
+        self.gameControllerConnectButton.isEnabled = false
+    }
+
+    func connectGameController() {
         self.setupGameControllerNotifications()
 
         UIView.animate(withDuration: 0.3) {
             self.setupGameController(parentView: self.view, virtual: false, controls: self.configurationElements)
         }
-
-        self.gameControllerConnectButton.isEnabled = false
     }
 
     lazy var gameControllerConnectButton: UIButton = {
@@ -96,6 +139,20 @@ class ViewController: UIViewController {
         return stackView
     }()
 
+    lazy var mainStack: UIStackView = {
+
+        let stackView = UIStackView(arrangedSubviews: [
+            sharePlayStack,
+            gameControllerStack,
+         ])
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        stackView.axis = .vertical
+        stackView.alignment = .center
+        stackView.distribution = .fill
+        stackView.spacing = .standardSpacing * 2
+        return stackView
+    }()
+
     lazy var status: UILabel = buildLabel()
 
     private func buildLabel(text: String? = nil, textAlignment: NSTextAlignment = .left) -> UILabel {
@@ -105,7 +162,8 @@ class ViewController: UIViewController {
         label.font = .preferredFont(forTextStyle: .body)
         label.textAlignment = .center
         label.text = text
-        label.numberOfLines = 1
+        label.numberOfLines = 0
+        label.lineBreakMode = .byWordWrapping
         label.setContentCompressionResistancePriority(.required, for: .vertical)
         return label
     }
@@ -115,24 +173,24 @@ class ViewController: UIViewController {
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.axis = axis
         stackView.distribution = .fillEqually
-        stackView.spacing = 8
+        stackView.spacing = .standardSpacing
         return stackView
     }
 
     override func loadView() {
         super.loadView()
 
-        view.addSubview(gameControllerStack)
+        view.addSubview(mainStack)
         status.setContentHuggingPriority(.required, for: .vertical)
         view.addSubview(status)
 
         view.backgroundColor = .systemBackground
 
         NSLayoutConstraint.activate([
-            gameControllerStack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            gameControllerStack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: .horizontalMargin),
-            view.safeAreaLayoutGuide.trailingAnchor.constraint(equalTo: gameControllerStack.trailingAnchor, constant: .horizontalMargin),
-            status.topAnchor.constraint(greaterThanOrEqualTo: gameControllerStack.bottomAnchor, constant: .standardSpacing),
+            mainStack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            mainStack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: .horizontalMargin),
+            view.safeAreaLayoutGuide.trailingAnchor.constraint(equalTo: mainStack.trailingAnchor, constant: .horizontalMargin),
+            status.topAnchor.constraint(greaterThanOrEqualTo: mainStack.bottomAnchor, constant: .standardSpacing),
             status.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: .horizontalMargin),
             view.safeAreaLayoutGuide.trailingAnchor.constraint(equalTo: status.trailingAnchor, constant: .horizontalMargin),
             status.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
@@ -144,15 +202,22 @@ class ViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         // Do any additional setup after loading the view.
+        faceTimeMonitor = FaceTimeMonitor(delegate: self)
+        groupActivitieHandler = GroupActivityHandler<GameControllerActivity, GameControllerMessage>(activity: GameControllerActivity(), delegate: self)
+        groupActivitieHandler?.beginWaitingForSessions()
 
-        status.text = "General Status"
+        debugLog(Bundle.main.appVersionString ?? "Unknown Version!")
     }
 }
 
 extension ViewController: GameControllerAdapterProtocol {
 
     func updateGameControllerStatus() {
-        gameControllerStatus.text = connectedController?.vendorName ?? "None"
+        sendGameController(
+            event: .gameController(
+                connectedController?.vendorName ?? "None"
+            )
+        )
     }
 
     func leftPadValueChanged(pad: GCControllerDirectionPad, xValue: Float, yValue: Float) {
@@ -162,7 +227,7 @@ extension ViewController: GameControllerAdapterProtocol {
         let leftValue = (v + w) / 2
         let rightValue = (v - w) / 2
 
-        leftJoyStatus.text = "\(leftValue), \(rightValue)"
+        sendGameController(event: .leftPadValueChanged(leftValue, rightValue))
     }
     
     func rightPadValueChanged(pad: GCControllerDirectionPad, xValue: Float, yValue: Float) {
@@ -172,22 +237,153 @@ extension ViewController: GameControllerAdapterProtocol {
         let leftValue = (v + w) / 2
         let rightValue = (v - w) / 2
 
-        rightJoyStatus.text = "\(leftValue), \(rightValue)"
+        sendGameController(event: .rightPadValueChanged(leftValue, rightValue))
     }
     
     func buttonAValueChanged(_ button: GCControllerButtonInput, _ value: Float, _ pressed: Bool) {
-        aButtonStatus.text = pressed ? "Pressed \(value)" : "Not Pressed"
+        sendGameController(event: .buttonAValueChanged(value, pressed))
     }
     
     func buttonBValueChanged(_ button: GCControllerButtonInput, _ value: Float, _ pressed: Bool) {
-        bButtonStatus.text = pressed ? "Pressed \(value)" : "Not Pressed"
+        sendGameController(event: .buttonBValueChanged(value, pressed))
     }
     
     func buttonXValueChanged(_ button: GCControllerButtonInput, _ value: Float, _ pressed: Bool) {
-        xButtonStatus.text = pressed ? "Pressed \(value)" : "Not Pressed"
+        sendGameController(event: .buttonXValueChanged(value, pressed))
     }
     
     func buttonYValueChanged(_ button: GCControllerButtonInput, _ value: Float, _ pressed: Bool) {
+        sendGameController(event: .buttonYValueChanged(value, pressed))
+    }
+
+    func debugLog(_ text: String) {
+#if DEBUG
+        print(text)
+#endif
+        DispatchQueue.main.async {
+            self.status.text = text
+        }
+    }
+}
+
+extension ViewController: FaceTimeMonitorDelegate {
+
+    func canConnect(_ canConnect: Bool) {
+        faceTimeStatus.text = canConnect ? "Eligible" : "Ineligible"
+        print("Group Activities:\(canConnect ? "Eligible" : "Ineligible")")
+    }
+}
+
+extension ViewController: GroupActivityHandlerDelegate {
+
+    func didConnect() {
+        debugLog("Connected")
+
+        let version: (Int, Int, Int, Int) = Bundle.main.appVersion
+        groupActivitieHandler?.send(
+            message: GameControllerMessage(
+                service: .version(
+                    version.0, version.1, version.3
+                )
+            )
+        )
+    }
+
+    func didDisconnect() {
+        debugLog("Disconnected")
+    }
+    
+    func participantsChanged(count: Int) {
+        debugLog("Participants: \(count)")
+    }
+    
+    func session(status: String) {
+        debugLog("Session Status: \(status)")
+    }
+    
+    func update<M>(message: M) where M : GroupActivityMessage {
+        guard
+            let message = message as? GameControllerMessage
+        else {
+            assertionFailure("Unknown message type: \(message.description)")
+            return
+        }
+
+        switch message.service {
+        case .version(let major, let minor, let build):
+            debugLog("Version: \(major).\(minor)  b\(build)")
+        case .gameControllerEvent(let event):
+            displayGameController(event: event)
+            debugLog("Event: \(event.description)")
+        }
+    }
+    
+    func report(error: any Error) {
+        debugLog("Report: \(error)")
+    }
+
+    private func sendGameController(event: GameControllerEvent) {
+        groupActivitieHandler?.send(
+            message: GameControllerMessage(
+                service: .gameControllerEvent(event)
+            )
+        )
+    }
+}
+
+extension ViewController {
+
+    func displayGameController(event: GameControllerEvent) {
+        switch event {
+
+        case .gameController(let vendor):
+            displayGameControllerStatus(vendor)
+
+        case .leftPadValueChanged(let leftValue, let rightValue):
+            displayLeftPadValue(leftValue, rightValue)
+
+        case .rightPadValueChanged(let leftValue, let rightValue):
+            displayRightPadValue(leftValue, rightValue)
+
+        case .buttonAValueChanged(let value, let pressed):
+            displayButtonAValue(value, pressed)
+
+        case .buttonBValueChanged(let value, let pressed):
+            displayButtonBValue(value, pressed)
+
+        case .buttonXValueChanged(let value, let pressed):
+            displayButtonXValue(value, pressed)
+
+        case .buttonYValueChanged(let value, let pressed):
+            displayButtonYValue(value, pressed)
+        }
+    }
+
+    func displayGameControllerStatus(_ vendor: String) {
+        gameControllerStatus.text = vendor
+    }
+
+    func displayLeftPadValue(_ leftValue: Float, _ rightValue: Float) {
+        leftJoyStatus.text = "\(leftValue), \(rightValue)"
+    }
+
+    func displayRightPadValue(_ leftValue: Float, _ rightValue: Float) {
+        rightJoyStatus.text = "\(leftValue), \(rightValue)"
+    }
+
+    func displayButtonAValue(_ value: Float, _ pressed: Bool) {
+        aButtonStatus.text = pressed ? "Pressed \(value)" : "Not Pressed"
+    }
+
+    func displayButtonBValue(_ value: Float, _ pressed: Bool) {
+        bButtonStatus.text = pressed ? "Pressed \(value)" : "Not Pressed"
+    }
+
+    func displayButtonXValue(_ value: Float, _ pressed: Bool) {
+        xButtonStatus.text = pressed ? "Pressed \(value)" : "Not Pressed"
+    }
+
+    func displayButtonYValue(_ value: Float, _ pressed: Bool) {
         yButtonStatus.text = pressed ? "Pressed \(value)" : "Not Pressed"
     }
 }
