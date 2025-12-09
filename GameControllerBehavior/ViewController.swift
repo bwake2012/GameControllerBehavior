@@ -46,8 +46,11 @@ class ViewController: UIViewController {
         let button = UIButton(primaryAction: sessionStartAction)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.titleLabel?.font = .preferredFont(forTextStyle: .title1)
+        button.titleLabel?.lineBreakMode = .byWordWrapping
+        button.titleLabel?.numberOfLines = 0
+        button.titleLabel?.textAlignment = .center
         NSLayoutConstraint.activate([
-            button.heightAnchor.constraint(equalToConstant: .minTouchTarget),
+            button.heightAnchor.constraint(greaterThanOrEqualToConstant: .minTouchTarget),
         ])
         return button
     }()
@@ -87,8 +90,11 @@ class ViewController: UIViewController {
         let button = UIButton(primaryAction: connectAction)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.titleLabel?.font = .preferredFont(forTextStyle: .title1)
+        button.titleLabel?.lineBreakMode = .byWordWrapping
+        button.titleLabel?.numberOfLines = 0
+        button.titleLabel?.textAlignment = .center
         NSLayoutConstraint.activate([
-            button.heightAnchor.constraint(equalToConstant: .minTouchTarget),
+            button.heightAnchor.constraint(greaterThanOrEqualToConstant: .minTouchTarget),
         ])
         return button
     }()
@@ -122,7 +128,6 @@ class ViewController: UIViewController {
     lazy var gameControllerStack: UIStackView = {
 
         let stackView = UIStackView(arrangedSubviews: [
-            gameControllerConnectButton,
             gameControllerStatus,
             leftJoyStack,
             rightJoyStack,
@@ -135,7 +140,7 @@ class ViewController: UIViewController {
         stackView.axis = .vertical
         stackView.alignment = .center
         stackView.distribution = .fill
-        stackView.spacing = 8
+        stackView.spacing = .standardSpacing
         return stackView
     }()
 
@@ -143,13 +148,14 @@ class ViewController: UIViewController {
 
         let stackView = UIStackView(arrangedSubviews: [
             sharePlayStack,
+            gameControllerConnectButton,
             gameControllerStack,
          ])
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.axis = .vertical
         stackView.alignment = .center
         stackView.distribution = .fill
-        stackView.spacing = .standardSpacing * 2
+        stackView.spacing = .minTouchTarget / 2
         return stackView
     }()
 
